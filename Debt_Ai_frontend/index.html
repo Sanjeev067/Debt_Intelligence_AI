@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI PDF Analyzer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+      text-align: center;
+      padding: 40px;
+    }
+    h2 {
+      color: #333;
+    }
+    input[type="file"] {
+      margin-top: 10px;
+    }
+    button {
+      margin-top: 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #loading {
+      display: none;
+      color: #555;
+      font-style: italic;
+      margin-top: 15px;
+    }
+    #result {
+      display: none;
+      margin-top: 20px;
+      text-align: left;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      white-space: pre-wrap;
+    }
+    #downloadBtn {
+      display: none;
+      margin-top: 10px;
+      background: #28a745;
+    }
+    #downloadBtn:hover {
+      background: #218838;
+    }
+    hr {
+      margin: 30px 0;
+    }
+    #summariesSection {
+      text-align: left;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .summaryCard {
+      background: #fff;
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 10px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      text-align: left;
+    }
+    #resultsPage {
+      display: none;
+      max-width: 800px;
+      margin: 30px auto;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <h2>AI PDF Analyzer</h2>
+  <input type="file" id="fileInput" accept=".pdf,.txt" />
+  <br />
+  <button onclick="uploadFile()">Analyze</button>
+
+  <div id="loading">Analyzing... Please wait.</div>
+
+  <div id="result"></div>
+  <button id="downloadBtn">Download Summary</button>
+
+  <hr />
+  <h3>View Previous Summaries</h3>
+  <button id="viewSummariesBtn">Load Summaries</button>
+
+  <div id="summariesSection">
+    <p id="noSummaries" style="color:gray;">No summaries loaded yet.</p>
+    <div id="summariesList"></div>
+  </div>
+
+  <hr />
+  <!-- ✅ New Step 19: View Results Page -->
+  <h3>View All Uploaded Results</h3>
+  <button id="viewResultsBtn">Open Results Page</button>
+
+  <div id="resultsPage">
+    <h2>📄 All Uploaded PDF Summaries</h2>
+    <div id="resultsList"></div>
+    <button id="backBtn" style="background:#6c757d;">⬅ Back</button>
+  </div>
+
+  <script>
+    async function uploadFile() {
+      const fileInput = document.getElementById("fileInput");
+      const file = fileInput.files[0];
+      const loading = document.getElementById("loading");
+      const resultDiv = document.getElementById("result");
+      const downloadBtn = document.getElementById("downloadBtn");
+
+      if (!file) {
+        alert("Please choose a file first!");
+        return;
+      }
+
+      loading.style.display = "block";
+      resultDiv.style.display = "none";
+      downloadBtn.style.display = "none";
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/uploadfile/", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await response.json();
+        loading.style.display = "none";
+
+        if (data.status === "ok") {
+          resultDiv.innerHTML = `<h3>Summary for: ${data.file_name}</h3><p>${data.summary}</p>`;
+          resultDiv.style.display = "block";
+
+          // ✅ Enable Download
+          downloadBtn.style.display = "inline-block";
+          downloadBtn.onclick = () => downloadSummary(data.summary);
+        } else {
+          resultDiv.innerHTML = `<p style="color:red;">Error: ${data.message}</p>`;
+          resultDiv.style.display = "block";
+        }
+      } catch (error) {
+        loading.style.display = "none";
+        alert("Something went wrong: " + error.message);
+      }
+    }
+
+    // ✅ Download AI Summary
+    function downloadSummary(text) {
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "AI_Summary.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }
+
+    // ✅ Load saved summaries
+    document.getElementById("viewSummariesBtn").addEventListener("click", async () => {
+      const response = await fetch("http://127.0.0.1:8000/get_summaries/");
+      const data = await response.json();
+
+      const summariesList = document.getElementById("summariesList");
+      summariesList.innerHTML = "";
+
+      if (data.status === "ok" && data.results.length > 0) {
+        document.getElementById("noSummaries").style.display = "none";
+
+        data.results.forEach(item => {
+          const div = document.createElement("div");
+          div.classList.add("summaryCard");
+          div.innerHTML = `
+            <strong>${item.file_name}</strong><br>
+            <small style="color:gray;">${item.created_at}</small>
+            <p>${item.summary}</p>
+          `;
+          summariesList.appendChild(div);
+        });
+      } else {
+        document.getElementById("noSummaries").style.display = "block";
+      }
+    });
+
+    // ✅ Step 19 — Handle View Results Page
+    document.getElementById("viewResultsBtn").addEventListener("click", async () => {
+      const resultsPage = document.getElementById("resultsPage");
+      const resultsList = document.getElementById("resultsList");
+
+      // Clear previous data
+      resultsList.innerHTML = "<p>Loading results...</p>";
+
+      // Fetch summaries from backend
+      const response = await fetch("http://127.0.0.1:8000/get_summaries/");
+      const data = await response.json();
+
+      if (data.status === "ok" && data.results.length > 0) {
+        resultsList.innerHTML = ""; // clear loader text
+
+        data.results.forEach(item => {
+          const div = document.createElement("div");
+          div.classList.add("summaryCard");
+          div.innerHTML = `
+            <strong>📘 ${item.file_name}</strong><br>
+            <small style="color:gray;">${item.created_at}</small>
+            <p>${item.summary}</p>
+          `;
+          resultsList.appendChild(div);
+        });
+      } else {
+        resultsList.innerHTML = "<p style='color:gray;'>No results found yet.</p>";
+      }
+
+      // Hide main upload section
+      document.querySelector("#fileInput").style.display = "none";
+      document.querySelector("button[onclick='uploadFile()']").style.display = "none";
+      document.querySelector("#viewSummariesBtn").style.display = "none";
+      document.querySelector("#viewResultsBtn").style.display = "none";
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("result").style.display = "none";
+      document.getElementById("downloadBtn").style.display = "none";
+
+      // Show results page
+      resultsPage.style.display = "block";
+    });
+
+    // ✅ Step 19 — Handle Back Button
+    document.getElementById("backBtn").addEventListener("click", () => {
+      document.getElementById("resultsPage").style.display = "none";
+      document.querySelector("#fileInput").style.display = "inline-block";
+      document.querySelector("button[onclick='uploadFile()']").style.display = "inline-block";
+      document.querySelector("#viewSummariesBtn").style.display = "inline-block";
+      document.querySelector("#viewResultsBtn").style.display = "inline-block";
+    });
+  </script>
+</body>
+</html>
